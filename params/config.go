@@ -21,6 +21,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params/forks"
 )
 
 // Genesis hashes to enforce below configs on.
@@ -107,6 +108,7 @@ var (
 		TerminalTotalDifficultyPassed: true,
 		MergeNetsplitBlock:            nil,
 		ShanghaiTime:                  newUint64(1696000704),
+		CancunTime:                    newUint64(1707305664),
 		Ethash:                        new(EthashConfig),
 	}
 	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
@@ -131,6 +133,7 @@ var (
 		TerminalTotalDifficultyPassed: true,
 		MergeNetsplitBlock:            big.NewInt(1735371),
 		ShanghaiTime:                  newUint64(1677557088),
+		CancunTime:                    newUint64(1706655072),
 		Ethash:                        new(EthashConfig),
 	}
 	// GoerliChainConfig contains the chain parameters to run a node on the Görli test network.
@@ -153,6 +156,7 @@ var (
 		TerminalTotalDifficulty:       big.NewInt(10_790_000),
 		TerminalTotalDifficultyPassed: true,
 		ShanghaiTime:                  newUint64(1678832736),
+		CancunTime:                    newUint64(1705473120),
 		Clique: &CliqueConfig{
 			Period: 15,
 			Epoch:  30000,
@@ -206,7 +210,6 @@ var (
 		ShanghaiTime:                  newUint64(0),
 		TerminalTotalDifficulty:       big.NewInt(0),
 		TerminalTotalDifficultyPassed: true,
-		IsDevMode:                     true,
 	}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
@@ -265,6 +268,36 @@ var (
 		VerkleTime:                    nil,
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
+		Ethash:                        new(EthashConfig),
+		Clique:                        nil,
+	}
+
+	// MergedTestChainConfig contains every protocol change (EIPs) introduced
+	// and accepted by the Ethereum core developers for testing purposes.
+	MergedTestChainConfig = &ChainConfig{
+		ChainID:                       big.NewInt(1),
+		HomesteadBlock:                big.NewInt(0),
+		DAOForkBlock:                  nil,
+		DAOForkSupport:                false,
+		EIP150Block:                   big.NewInt(0),
+		EIP155Block:                   big.NewInt(0),
+		EIP158Block:                   big.NewInt(0),
+		ByzantiumBlock:                big.NewInt(0),
+		ConstantinopleBlock:           big.NewInt(0),
+		PetersburgBlock:               big.NewInt(0),
+		IstanbulBlock:                 big.NewInt(0),
+		MuirGlacierBlock:              big.NewInt(0),
+		BerlinBlock:                   big.NewInt(0),
+		LondonBlock:                   big.NewInt(0),
+		ArrowGlacierBlock:             big.NewInt(0),
+		GrayGlacierBlock:              big.NewInt(0),
+		MergeNetsplitBlock:            big.NewInt(0),
+		ShanghaiTime:                  newUint64(0),
+		CancunTime:                    newUint64(0),
+		PragueTime:                    nil,
+		VerkleTime:                    nil,
+		TerminalTotalDifficulty:       big.NewInt(0),
+		TerminalTotalDifficultyPassed: true,
 		Ethash:                        new(EthashConfig),
 		Clique:                        nil,
 	}
@@ -359,6 +392,7 @@ type ChainConfig struct {
 	RegolithTime *uint64  `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
 	CanyonTime   *uint64  `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
 	// Delta: the Delta upgrade does not affect the execution-layer, and is thus not configurable in the chain config.
+	EcotoneTime *uint64 `json:"ecotoneTime,omitempty"` // Ecotone switch time (nil = no fork, 0 = already on optimism ecotone)
 
 	InteropTime *uint64 `json:"interopTime,omitempty"` // Interop switch time (nil = no fork, 0 = already on optimism interop)
 
@@ -372,9 +406,8 @@ type ChainConfig struct {
 	TerminalTotalDifficultyPassed bool `json:"terminalTotalDifficultyPassed,omitempty"`
 
 	// Various consensus engines
-	Ethash    *EthashConfig `json:"ethash,omitempty"`
-	Clique    *CliqueConfig `json:"clique,omitempty"`
-	IsDevMode bool          `json:"isDev,omitempty"`
+	Ethash *EthashConfig `json:"ethash,omitempty"`
+	Clique *CliqueConfig `json:"clique,omitempty"`
 
 	// Optimism config, nil if not active
 	Optimism *OptimismConfig `json:"optimism,omitempty"`
@@ -508,6 +541,9 @@ func (c *ChainConfig) Description() string {
 	if c.CanyonTime != nil {
 		banner += fmt.Sprintf(" - Canyon:                      @%-10v\n", *c.CanyonTime)
 	}
+	if c.EcotoneTime != nil {
+		banner += fmt.Sprintf(" - Ecotone:                     @%-10v\n", *c.EcotoneTime)
+	}
 	if c.InteropTime != nil {
 		banner += fmt.Sprintf(" - Interop:                     @%-10v\n", *c.InteropTime)
 	}
@@ -627,6 +663,10 @@ func (c *ChainConfig) IsCanyon(time uint64) bool {
 	return isTimestampForked(c.CanyonTime, time)
 }
 
+func (c *ChainConfig) IsEcotone(time uint64) bool {
+	return isTimestampForked(c.EcotoneTime, time)
+}
+
 func (c *ChainConfig) IsInterop(time uint64) bool {
 	return isTimestampForked(c.InteropTime, time)
 }
@@ -644,8 +684,13 @@ func (c *ChainConfig) IsOptimismBedrock(num *big.Int) bool {
 func (c *ChainConfig) IsOptimismRegolith(time uint64) bool {
 	return c.IsOptimism() && c.IsRegolith(time)
 }
+
 func (c *ChainConfig) IsOptimismCanyon(time uint64) bool {
 	return c.IsOptimism() && c.IsCanyon(time)
+}
+
+func (c *ChainConfig) IsOptimismEcotone(time uint64) bool {
+	return c.IsOptimism() && c.IsEcotone(time)
 }
 
 // IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
@@ -837,6 +882,23 @@ func (c *ChainConfig) ElasticityMultiplier() uint64 {
 	return DefaultElasticityMultiplier
 }
 
+// LatestFork returns the latest time-based fork that would be active for the given time.
+func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
+	// Assume last non-time-based fork has passed.
+	london := c.LondonBlock
+
+	switch {
+	case c.IsPrague(london, time):
+		return forks.Prague
+	case c.IsCancun(london, time):
+		return forks.Cancun
+	case c.IsShanghai(london, time):
+		return forks.Shanghai
+	default:
+		return forks.Paris
+	}
+}
+
 // isForkBlockIncompatible returns true if a fork scheduled at block s1 cannot be
 // rescheduled to block s2 because head is already past the fork.
 func isForkBlockIncompatible(s1, s2, head *big.Int) bool {
@@ -980,6 +1042,8 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 	if chainID == nil {
 		chainID = new(big.Int)
 	}
+	// disallow setting Merge out of order
+	isMerge = isMerge && c.IsLondon(num)
 	return Rules{
 		ChainID:          new(big.Int).Set(chainID),
 		IsHomestead:      c.IsHomestead(num),
@@ -993,13 +1057,13 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsBerlin:         c.IsBerlin(num),
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
-		IsShanghai:       c.IsShanghai(num, timestamp),
-		IsCancun:         c.IsCancun(num, timestamp),
-		IsPrague:         c.IsPrague(num, timestamp),
-		IsVerkle:         c.IsVerkle(num, timestamp),
+		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
+		IsCancun:         isMerge && c.IsCancun(num, timestamp),
+		IsPrague:         isMerge && c.IsPrague(num, timestamp),
+		IsVerkle:         isMerge && c.IsVerkle(num, timestamp),
 		// Optimism
-		IsOptimismBedrock:  c.IsOptimismBedrock(num),
-		IsOptimismRegolith: c.IsOptimismRegolith(timestamp),
-		IsOptimismCanyon:   c.IsOptimismCanyon(timestamp),
+		IsOptimismBedrock:  isMerge && c.IsOptimismBedrock(num),
+		IsOptimismRegolith: isMerge && c.IsOptimismRegolith(timestamp),
+		IsOptimismCanyon:   isMerge && c.IsOptimismCanyon(timestamp),
 	}
 }

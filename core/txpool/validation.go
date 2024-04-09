@@ -69,6 +69,9 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if tx.Type() == types.DepositTxType {
 		return core.ErrTxTypeNotSupported
 	}
+	if opts.Config.IsOptimism() && tx.Type() == types.BlobTxType {
+		return core.ErrTxTypeNotSupported
+	}
 	// Ensure transactions not implemented by the calling pool are rejected
 	if opts.Accept&(1<<tx.Type()) == 0 {
 		return fmt.Errorf("%w: tx type %v not supported by this pool", core.ErrTxTypeNotSupported, tx.Type())
@@ -165,17 +168,10 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobTxSidecar) err
 	// Blob quantities match up, validate that the provers match with the
 	// transaction hash before getting to the cryptography
 	hasher := sha256.New()
-	for i, want := range hashes {
-		hasher.Write(sidecar.Commitments[i][:])
-		hash := hasher.Sum(nil)
-		hasher.Reset()
-
-		var vhash common.Hash
-		vhash[0] = params.BlobTxHashVersion
-		copy(vhash[1:], hash[1:])
-
-		if vhash != want {
-			return fmt.Errorf("blob %d: computed hash %#x mismatches transaction one %#x", i, vhash, want)
+	for i, vhash := range hashes {
+		computed := kzg4844.CalcBlobHashV1(hasher, &sidecar.Commitments[i])
+		if vhash != computed {
+			return fmt.Errorf("blob %d: computed hash %#x mismatches transaction one %#x", i, computed, vhash)
 		}
 	}
 	// Blob commitments match with the hashes in the transaction, verify the
@@ -241,11 +237,11 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	}
 	// Ensure the transactor has enough funds to cover the transaction costs
 	var (
-		balance = opts.State.GetBalance(from)
+		balance = opts.State.GetBalance(from).ToBig()
 		cost    = tx.Cost()
 	)
 	if opts.L1CostFn != nil {
-		if l1Cost := opts.L1CostFn(tx.RollupDataGas()); l1Cost != nil { // add rollup cost
+		if l1Cost := opts.L1CostFn(tx.RollupCostData()); l1Cost != nil { // add rollup cost
 			cost = cost.Add(cost, l1Cost)
 		}
 	}
