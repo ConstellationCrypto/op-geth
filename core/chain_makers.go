@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 )
 
 // BlockGen creates blocks for testing.
@@ -157,7 +158,7 @@ func (b *BlockGen) AddTxWithVMConfig(tx *types.Transaction, config vm.Config) {
 }
 
 // GetBalance returns the balance of the given address at the generated block.
-func (b *BlockGen) GetBalance(addr common.Address) *big.Int {
+func (b *BlockGen) GetBalance(addr common.Address) *uint256.Int {
 	return b.statedb.GetBalance(addr)
 }
 
@@ -319,7 +320,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		// to a chain, so the difficulty will be left unset (nil). Set it here to the
 		// correct value.
 		if b.header.Difficulty == nil {
-			if config.TerminalTotalDifficulty == nil {
+			if config.TerminalTotalDifficulty == nil && !config.IsOptimismBedrock(b.header.Number) {
 				// Clique chain
 				b.header.Difficulty = big.NewInt(2)
 			} else {
